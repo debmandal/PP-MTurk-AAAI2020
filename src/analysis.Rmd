@@ -1,0 +1,1683 @@
+---
+title: "The Effectiveness of Peer Prediction in Long-Term Forecasting"
+author: "Debmalya Mandal"
+date: "1/7/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(boot)
+library(gridExtra)
+```
+
+```{r Set up tibbles}
+
+outcomes_oct <- c(1,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,0)
+workers <- read_csv('recruited_workers.csv')
+wid <- workers$WorkerId
+workers$treatment <- NA
+
+BrierAcc <- function(x)
+{
+  res <- outcomes_oct[x[2]]
+  if(res == 1)
+    return(1 -(1-x[1])^2)
+  else
+    return(1 - x[1]^2)
+}
+
+CatQuestions <- function(x)
+{
+  if(x >= 1 && x <= 6)
+    return('Sports')
+  else if(x >= 7 && x <= 12)
+    return('Politics')
+  else if(x >= 13 && x <= 18)
+    return('Entertainment')
+}
+
+CatTreatment <- function(x)
+{
+  if(x == 1)
+    return('Scoring Rule')
+  else if(x == 2)
+    return('Peer Prediction')
+  else if(x == 3)
+    return('Scoring + PP (Rank)')
+  else if(x == 4)
+    return('Scoring + PP')
+}
+
+answers.oct8 <- read_csv('answers-oct8.csv')
+answers.oct9 <- read_csv('answers-oct9.csv')
+answers.oct10 <- read_csv('answers-oct10.csv')
+answers.oct11 <- read_csv('answers-oct11.csv')
+answers.oct12 <- read_csv('answers-oct12.csv')
+answers.oct13 <- read_csv('answers-oct13.csv')
+
+idx <- which(is.na(answers.oct8$workerId) == TRUE)
+answers.oct8 <- answers.oct8[-idx,]
+idx <- which(is.na(answers.oct9$workerId) == TRUE)
+answers.oct9 <- answers.oct9[-idx,]
+idx <- which(is.na(answers.oct10$workerId) == TRUE)
+answers.oct10 <- answers.oct10[-idx,]
+idx <- which(is.na(answers.oct11$workerId) == TRUE)
+answers.oct11 <- answers.oct11[-idx,]
+idx <- which(is.na(answers.oct12$workerId) == TRUE)
+answers.oct12 <- answers.oct12[-idx,]
+idx <- which(is.na(answers.oct13$workerId) == TRUE)
+answers.oct13 <- answers.oct13[-idx,]
+
+#oct 8 
+one.answers.oct8 <- answers.oct8 %>% group_by(workerId, taskID) %>% filter(timestamp == max(timestamp) ) %>% ungroup()
+workers.oct8 <- unique(one.answers.oct8$workerId)
+#add aditional columns
+one.answers.oct8$Category <- apply(one.answers.oct8[,c('taskID')],1, CatQuestions)
+one.answers.oct8$BrierScore <- apply(one.answers.oct8[,c('forecast','taskID')],1,BrierAcc)
+
+#oct 9 
+one.answers.oct9 <- answers.oct9 %>% group_by(workerId, taskID) %>% filter(timestamp == max(timestamp) ) %>% ungroup()
+workers.oct9 <- unique(one.answers.oct9$workerId)
+#add aditional columns
+one.answers.oct9$Category <- apply(one.answers.oct9[,c('taskID')],1, CatQuestions)
+one.answers.oct9$BrierScore <- apply(one.answers.oct9[,c('forecast','taskID')],1,BrierAcc)
+
+#oct 10
+one.answers.oct10 <- answers.oct10 %>% group_by(workerId, taskID) %>% filter(timestamp == max(timestamp) ) %>% ungroup()
+workers.oct10 <- unique(one.answers.oct10$workerId)
+#add aditional columns
+one.answers.oct10$Category <- apply(one.answers.oct10[,c('taskID')],1, CatQuestions)
+one.answers.oct10$BrierScore <- apply(one.answers.oct10[,c('forecast','taskID')],1,BrierAcc)
+
+#oct 11
+one.answers.oct11 <- answers.oct11 %>% group_by(workerId, taskID) %>% filter(timestamp == max(timestamp) ) %>% ungroup()
+workers.oct11 <- unique(one.answers.oct11$workerId)
+#add aditional columns
+one.answers.oct11$Category <- apply(one.answers.oct11[,c('taskID')],1, CatQuestions)
+one.answers.oct11$BrierScore <- apply(one.answers.oct11[,c('forecast','taskID')],1,BrierAcc)
+
+#oct 12
+one.answers.oct12 <- answers.oct12 %>% group_by(workerId, taskID) %>% filter(timestamp == max(timestamp) ) %>% ungroup()
+workers.oct12 <- unique(one.answers.oct12$workerId)
+#add aditional columns
+one.answers.oct12$Category <- apply(one.answers.oct12[,c('taskID')],1, CatQuestions)
+one.answers.oct12$BrierScore <- apply(one.answers.oct12[,c('forecast','taskID')],1,BrierAcc)
+
+#oct 13
+one.answers.oct13 <- answers.oct13 %>% group_by(workerId, taskID) %>% filter(timestamp == max(timestamp) ) %>% ungroup()
+workers.oct13 <- unique(one.answers.oct13$workerId)
+#add aditional columns
+one.answers.oct13$Category <- apply(one.answers.oct13[,c('taskID')],1, CatQuestions)
+one.answers.oct13$BrierScore <- apply(one.answers.oct13[,c('forecast','taskID')],1,BrierAcc)
+
+
+
+#start of data analysis
+FindEntry <- function(x,var2)
+{
+  w <- as.character(x[1])
+  td <- as.integer( x[2])
+  if(var2 == 1)
+    df <- one.answers.oct9
+  else if(var2 == 2)
+    df <- one.answers.oct10
+  else if(var2 == 3)
+    df <- one.answers.oct11
+  else if(var2 == 4)
+    df <- one.answers.oct12
+  else if(var2 == 5)
+    df <- one.answers.oct13
+  
+  idx <- which(df$workerId == w & df$taskID == td)
+  return(unlist(df[idx,'BrierScore']) )
+}
+
+#update answers.* to include only valid workers
+valid.workers.oct <- one.answers.oct8 %>% count(workerId) %>% filter(n >= 18)
+valid.workers.oct <- valid.workers.oct$workerId
+valid.workers.oct <- valid.workers.oct[1:(length(valid.workers.oct)-3) ] #remove last three
+valid.workers.oct <- setdiff(valid.workers.oct, c("A3OLRWACCCCUTU", "ACBPI5N6UH9", "A1FS8SBR4SDWYG","APLBF6JY2C1QZ", "APLBF6JY2C1QZ")) 
+answers.oct8 <- filter(answers.oct8, workerId %in% valid.workers.oct)
+
+answers.oct9 <- filter(answers.oct9, workerId %in% valid.workers.oct)
+
+answers.oct10 <- filter( answers.oct10, workerId %in% valid.workers.oct)
+
+answers.oct11 <- filter(answers.oct11, workerId %in% valid.workers.oct)
+
+answers.oct12 <- filter(answers.oct12, workerId %in% valid.workers.oct)
+
+answers.oct13 <- filter(answers.oct13, workerId %in% valid.workers.oct)
+
+#update one.answers.* to include only valid workers
+one.answers.oct8 <- filter(one.answers.oct8, workerId %in% valid.workers.oct)
+
+one.answers.oct9 <- filter(one.answers.oct9, workerId %in% valid.workers.oct)
+
+one.answers.oct10 <- filter(one.answers.oct10, workerId %in% valid.workers.oct)
+
+one.answers.oct11 <- filter(one.answers.oct11, workerId %in% valid.workers.oct)
+
+one.answers.oct12 <- filter(one.answers.oct12, workerId %in% valid.workers.oct)
+
+one.answers.oct13 <- filter(one.answers.oct13, workerId %in% valid.workers.oct)
+
+
+Acc8 <- mutate(one.answers.oct8, Accuracy = BrierScore, Date = 'Oct 8')
+Acc9 <- mutate(one.answers.oct9, Accuracy = BrierScore, Date = 'Oct 9')
+Acc10 <- mutate(one.answers.oct10, Accuracy = BrierScore, Date = 'Oct 10')
+Acc11 <- mutate(one.answers.oct11, Accuracy = BrierScore, Date = 'Oct 11')
+Acc12 <- mutate(one.answers.oct12, Accuracy = BrierScore, Date = 'Oct 12')
+Acc13 <- mutate(one.answers.oct13, Accuracy = BrierScore, Date = 'Oct 13')
+
+Acc.oct <- rbind(Acc8,Acc9)
+Acc.oct <- rbind(Acc.oct, Acc10)
+Acc.oct <- rbind(Acc.oct, Acc11)
+Acc.oct <- rbind(Acc.oct, Acc12)
+Acc.oct <- rbind(Acc.oct, Acc13)
+
+Acc.oct$Category <- apply(Acc.oct[,c('taskID')],1,CatQuestions)
+Acc.oct$Category <- factor(Acc.oct$Category, levels = c("Sports","Politics","Entertainment"))
+Acc.oct$treatment <- apply(Acc.oct[,c('treatment')],1,CatTreatment)
+Acc.oct$treatment <- factor(Acc.oct$treatment, levels = c("Scoring Rule", "Peer Prediction", "Scoring + PP (Rank)", "Scoring + PP"))
+# GroupAcc <- Acc %>% group_by(treatment,taskID,Date) %>% summarise(Accuracy = mean(Accuracy))
+# GroupAcc$Category <- apply(GroupAcc[,c('taskID')],1, CatQuestions)
+# GroupAcc$treatment <- apply(GroupAcc[,c('treatment')],1,CatTreatment)
+
+#add counts
+count.answers.oct8 <- answers.oct8 %>% count(workerId,taskID)
+count.answers.oct9 <- answers.oct9 %>% count(workerId,taskID)
+count.answers.oct10 <- answers.oct10 %>% count(workerId,taskID)
+count.answers.oct11 <- answers.oct11 %>% count(workerId,taskID)
+count.answers.oct12 <- answers.oct12 %>% count(workerId,taskID)
+count.answers.oct13 <- answers.oct13 %>% count(workerId,taskID)
+
+#compute updates
+CountUpdates <- function(x,var2)
+{
+  w <- as.character(x[1])
+  t <- as.integer(x[2])
+  if(var2 == 1)
+  {
+    df1 <- count.answers.oct8
+    #df2 <- count.answers.oct9
+  }
+  else if(var2 == 2)
+  {
+    df1 <- count.answers.oct8
+    df2 <- count.answers.oct9
+  }
+  else if(var2 == 3)
+  {
+    df1 <- count.answers.oct9
+    df2 <- count.answers.oct10
+  }
+  else if(var2 == 4)
+  {
+    df1 <- count.answers.oct10
+    df2 <- count.answers.oct11
+  }
+  else if(var2 == 5)
+  {
+    df1 <- count.answers.oct11
+    df2 <- count.answers.oct12
+  }
+  else if(var2 == 6)
+  {
+    df1 <- count.answers.oct12
+    df2 <- count.answers.oct13
+  }
+  if(var2 == 1)
+  {
+    idx1 <- which(df1$workerId == w & df1$taskID == t)
+    return(df1[idx1,"n"]$n)
+  }
+  
+  idx1 <- which(df1$workerId == w & df1$taskID == t)
+  idx2 <- which(df2$workerId == w & df2$taskID == t)
+  if(length(idx1) == 0L)
+    count0 <- 0
+  else
+    count0 <- df1[idx1,"n"]$n
+  if(length(idx2) == 0L)
+    print(c(w,t))
+  return(df2[idx2,"n"]$n  - count0 ) 
+}
+
+# Updatesj counts the number of updates for a (workerId, taskID) pair between date j and date j-1
+Updates8 <- Acc8
+Updates8$updates <- apply(Updates8[,c('workerId','taskID')],1, CountUpdates, var2 = 1) 
+Updates9 <- Acc9
+Updates9$updates <- apply(Updates9[,c('workerId','taskID')],1, CountUpdates, var2 = 2) 
+Updates10 <- Acc10
+Updates10$updates <- apply(Updates10[,c('workerId','taskID')],1, CountUpdates, var2 = 3) 
+Updates11 <- Acc11
+Updates11$updates <- apply(Updates11[,c('workerId','taskID')],1, CountUpdates, var2 = 4) 
+Updates12 <- Acc12
+Updates12$updates <- apply(Updates12[,c('workerId','taskID')],1, CountUpdates, var2 = 5) 
+Updates13 <- Acc13
+Updates13$updates <- apply(Updates13[,c('workerId','taskID')],1, CountUpdates, var2 = 5) 
+
+Updates.oct <- rbind(Updates8,Updates9)
+Updates.oct <- rbind(Updates.oct,Updates10)
+Updates.oct <- rbind(Updates.oct,Updates11)
+Updates.oct <- rbind(Updates.oct,Updates12)
+Updates.oct <- rbind(Updates.oct,Updates13)
+
+Updates.oct$Category <- apply(Updates.oct[,c('taskID')],1,CatQuestions)
+Updates.oct$Category <- factor(Updates.oct$Category, levels = c("Sports","Politics","Entertainment"))
+Updates.oct$treatment <- apply(Updates.oct[,c('treatment')],1,CatTreatment)
+Updates.oct$treatment <- factor(Updates.oct$treatment, levels = c("Scoring Rule", "Peer Prediction", "Scoring + PP (Rank)", "Scoring + PP"))
+
+#compute changes in forecastsv
+DiffChange <- function(x,var2)
+{
+  w <- as.character(x[1])
+  t <- as.integer(x[2])
+  if(var2 == 1)
+  {
+    df1 <- Change8
+    df2 <- Change9
+  }
+  else if(var2 == 2)
+  {
+    df1 <- Change9
+    df2 <- Change10
+  }
+  else if(var2 == 3)
+  {
+    df1 <- Change10
+    df2 <- Change11
+  }
+  else if(var2 == 4)
+  {
+    df1 <- Change11
+    df2 <- Change12
+  }
+  else if(var2 == 5)
+  {
+    df1 <- Change12
+    df2 <- Change13
+  }
+ 
+  idx1 <- which(df1$workerId == w & df1$taskID == t)
+  idx2 <- which(df2$workerId == w & df2$taskID == t)
+  if(length(idx1)>1)
+    print('problem!!!')
+  if(length(idx2)>1)
+    print('problem!!!')
+  if(length(idx1) == 0L)
+  {
+    count1 <- 0
+    sum1 <- 0
+  }
+  else
+  {
+    count1 <- df1[idx1,"n"]$n
+    sum1 <- df1[idx1,"sum_change"]$sum_change
+  }
+  if(length(idx2) == 0L)
+    print(c(w,t))
+  count2 <- df2[idx2,"n"]$n
+  sum2 <- df2[idx2,"sum_change"]$sum_change
+  
+  return(ifelse(count1 == count2, 0, (sum2 - sum1)/(count2 - count1)  ) ) 
+}
+
+#tempwid <- count.answers.jul26 %>% filter(n > 1) 
+
+Change8 <- answers.oct8 %>% group_by(workerId, taskID) %>% arrange(timestamp) %>% mutate(lagged_forecast = lag(forecast,1,default = 0.50)) %>% mutate(change = abs(lagged_forecast - forecast)) %>% summarise(sum_change = sum(change), n = n()) %>% mutate(Date = 'Oct 8') %>% ungroup()
+
+Change9 <- answers.oct9 %>% group_by(workerId, taskID) %>% arrange(timestamp) %>% mutate(lagged_forecast = lag(forecast,1,default = 0.50)) %>% mutate(change = abs(lagged_forecast - forecast)) %>% summarise(sum_change = sum(change), n = n()) %>% mutate(Date = 'Oct 9') %>% ungroup()
+
+Change10 <- answers.oct10 %>% group_by(workerId, taskID) %>% arrange(timestamp) %>% mutate(lagged_forecast = lag(forecast,1,default = 0.50)) %>% mutate(change = abs(lagged_forecast - forecast)) %>% summarise(sum_change = sum(change), n = n()) %>% mutate(Date = 'Oct 10') %>% ungroup()
+
+Change11 <- answers.oct11 %>% group_by(workerId, taskID) %>% arrange(timestamp) %>% mutate(lagged_forecast = lag(forecast,1,default = 0.50)) %>% mutate(change = abs(lagged_forecast - forecast)) %>% summarise(sum_change = sum(change), n = n()) %>% mutate(Date = 'Oct 11') %>% ungroup()
+ 
+Change12 <- answers.oct12 %>% group_by(workerId, taskID) %>% arrange(timestamp) %>% mutate(lagged_forecast = lag(forecast,1,default = 0.50)) %>% mutate(change = abs(lagged_forecast - forecast)) %>% summarise(sum_change = sum(change), n = n()) %>% mutate(Date = 'Oct 12') %>% ungroup()
+
+Change13 <- answers.oct13 %>% group_by(workerId, taskID) %>% arrange(timestamp) %>% mutate(lagged_forecast = lag(forecast,1,default = 0.50)) %>% mutate(change = abs(lagged_forecast - forecast)) %>% summarise(sum_change = sum(change), n = n()) %>% mutate(Date = 'Oct 13') %>% ungroup()
+
+
+
+Change8$avg_change <- apply(Change8[,c('workerId','taskID')],1, DiffChange, var2 = 1) 
+Change9$avg_change <- apply(Change9[,c('workerId','taskID')],1, DiffChange, var2 = 2) 
+Change10$avg_change <- apply(Change10[,c('workerId','taskID')],1, DiffChange, var2 = 3) 
+Change11$avg_change <- apply(Change11[,c('workerId','taskID')],1, DiffChange, var2 = 4) 
+Change12$avg_change <- apply(Change12[,c('workerId','taskID')],1, DiffChange, var2 = 5) 
+
+
+Change.oct <- rbind(Change8, Change9)
+Change.oct <- rbind(Change.oct, Change10)
+Change.oct <- rbind(Change.oct, Change11)
+Change.oct <- rbind(Change.oct, Change12)
+
+#add treatment
+Change.oct$treatment <- NA
+for(i in 1:nrow(Change.oct))
+{
+  w <- Change.oct[i,"workerId"]$workerId
+  idx <- which(one.answers.oct8$workerId == w & one.answers.oct8$taskID == 1)
+  Change.oct[i,"treatment"]$treatment <- one.answers.oct8[idx,"treatment"]$treatment
+}
+Change.oct$Category <- apply(Change.oct[,c('taskID')],1,CatQuestions)
+Change.oct$Category <- factor(Change.oct$Category, levels = c("Sports","Politics","Entertainment"))
+Change.oct$treatment <- apply(Change.oct[,c('treatment')],1,CatTreatment)
+Change.oct$treatment <- factor(Change.oct$treatment, levels = c("Scoring Rule", "Peer Prediction", "Scoring + PP (Rank)", "Scoring + PP"))
+
+
+#Peer Prediction Scores
+PPScore.oct <- read_csv('ppscore8.csv') %>% mutate(Date = 'Oct 8')
+PPScore.oct <- rbind(PPScore.oct, read_csv('ppscore9.csv') %>% mutate(Date = 'Oct 9'))
+PPScore.oct <- rbind(PPScore.oct, read_csv('ppscore10.csv') %>% mutate(Date = 'Oct 10') )
+PPScore.oct <- rbind(PPScore.oct, read_csv('ppscore11.csv') %>% mutate(Date = 'Oct 11'))
+PPScore.oct <- rbind(PPScore.oct, read_csv('ppscore12.csv') %>% mutate(Date = 'Oct 12') )
+PPScore.oct <- rbind(PPScore.oct, read_csv('ppscore13.csv') %>% mutate(Date = 'Oct 13') )
+
+PPScore.oct <- filter(PPScore.oct, workerId %in% valid.workers.oct)
+PPScore.oct$Category <- apply(PPScore.oct[,c('taskID')],1,CatQuestions)
+PPScore.oct$Category <- factor(PPScore.oct$Category, levels = c("Sports","Politics","Entertainment"))
+PPScore.oct$treatment <- apply(PPScore.oct[,c('treatment')],1,CatTreatment)
+PPScore.oct$treatment <- factor(PPScore.oct$treatment, levels = c("Scoring Rule", "Peer Prediction", "Scoring + PP (Rank)", "Scoring + PP"))
+
+
+```
+# Accuracy
+```{r Accuracy}
+
+#Accuracy for different combinationations of Treatment and Category of Questions
+lbd <- function(x){return(max(0,mean(x) - 1.96*sd(x)/sqrt( length(x))))}
+ubd <- function(x){return(min(1,mean(x) + 1.96*sd(x)/sqrt( length(x))))}
+
+
+levels(Acc$Category) <- c("Sports", "Politics &\n Economy", "Entertainment")
+Acc$Date <- factor(Acc$Date, levels = c("Oct 8","Oct 9","Oct 10","Oct 11","Oct 12","Oct 13") )
+theme_set(theme_bw() + theme(plot.title = element_text(face = 'bold', size = 20, hjust = 0.5),
+                     panel.grid.major = element_line(color = 'grey70', size = 0.2),
+                     panel.grid.minor = element_blank(),
+                     axis.text.x = element_text(colour="grey40",size=9,angle=0,hjust=.5,vjust=.5,face="plain"),
+                     axis.text.y = element_text(colour="grey40",size=9,hjust=.5,vjust=.5,face="plain"),  
+                     axis.title.x = element_text(colour="grey70",size=9,angle=0,hjust=.5,vjust=0,face="plain"),
+                     axis.title.y = element_text(colour="grey70",size=9,angle=90,hjust=.5,vjust=.5,face="plain")
+                     ) )
+
+# Treatment X Category X Date
+VarAcc <- Acc %>% group_by(treatment, Date, taskID, Category) %>% summarise(n = n(), y = mean(BrierScore), var = var(BrierScore)) %>% ungroup()
+VarAcc <- VarAcc %>% mutate(n_var = n*var, n_y = n*y)
+VarAcc <- VarAcc %>% group_by(treatment, Date, Category) %>% summarise(y = sum(n_y)/sum(n), se = sqrt(sum(n_var)) / sum(n) )
+VarAcc <- VarAcc %>% ungroup() %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se)
+
+ggplot(VarAcc, aes(x=Date, y=y, color=treatment, group=treatment)) + 
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + geom_line(size  = 0.4) +
+  facet_grid(Category~treatment) +
+  ggtitle('Daily Accuracy') + 
+  ylab('Accuracy (Brier Score)') + xlab('Day in Oct') + labs(color = 'Treatment') +
+  scale_x_discrete(labels = c("Oct 8" = 8, "Oct 9" = 9, "Oct 10" = 10, "Oct 11" = 11, "Oct 12" = 12, "Oct 13" = 13)) +
+  scale_color_brewer(palette = 'Set1') 
+  
+#Treatment X Question
+covA <- array(NA,c(4,18,6,6))
+for(t in 1:4)
+{
+ for(j in 1:18)
+ {
+  for(d1 in 1:6)
+  {
+    for(d2 in 1:6)
+    {
+      Date1 <- paste('Oct', d1 - 1 + 8)
+      Date2 <- paste('Oct', d2 - 1 + 8)
+      if(t == 1)
+        Treat <- 'Scoring Rule'
+      else if(t == 2)
+        Treat <- 'Peer Prediction'
+      else if(t == 3)
+        Treat <- 'Scoring + PP (Rank)'
+      else if(t == 4)
+        Treat <- 'Scoring + PP'
+      
+      v1 <- Acc[Acc$Date == Date1 & Acc$treatment == Treat & Acc$taskID == j, ]$BrierScore
+      v2 <- Acc[Acc$Date == Date2 & Acc$treatment == Treat & Acc$taskID == j, ]$BrierScore
+      covA[t,j,d1,d2] <- cov(v1,v2) 
+      
+    }
+  }
+ }
+}
+
+countw <- Acc %>% group_by(treatment) %>% summarise(count = length(unique(workerId)))
+sefuncTask <- function(x) #standard error for a fixed taskID
+{
+  treatment <- x[1]
+  taskID <- x[2]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  j <- as.numeric(taskID)
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,j,,]) 
+  
+  return(sqrt(v/(36*nt)))
+  
+}
+
+sefuncCat <- function(x) #standard error for a fixed category
+{
+  treatment <- x[1]
+  Cat <- x[2]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  if(Cat == 'Sports')
+    j <- 1:6
+  else if(Cat == 'Politics &\n Economy')
+    j <- 7:12
+  else if(Cat == 'Entertainment')
+    j <- 13:18
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,j,,]) 
+  
+  return(sqrt(v/(36*36*nt)))
+  
+}
+
+sefuncTreat <- function(x) #standard error for a fixed treatment
+{
+  treatment <- x[1]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,,,]) 
+  
+  return(sqrt(v/(108*108*nt)))
+  
+}
+VarAcc <- Acc %>% group_by(treatment, taskID, Category) %>% summarise(y = mean(BrierScore) ) %>% ungroup() 
+VarAcc$se <- apply(VarAcc[,c('treatment','taskID')],1,sefuncTask) 
+VarAcc <- VarAcc %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+
+  pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:18))
+  
+ggplot(VarAcc, aes(x=taskID, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+  geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+  ylab('Accuracy (Brier Score)') + xlab('Question Id') + labs(color = 'Treatment') +
+  scale_x_continuous(breaks = qb, labels = qb ) + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Accuracy over the Week') + facet_wrap(~Category, scales = 'free_x')
+
+
+# Treatment X Category
+VarAcc <- Acc %>% group_by(treatment, Category) %>% summarise(y = mean(BrierScore) ) %>% ungroup() 
+VarAcc$se <- apply(VarAcc[,c('treatment','Category')],1,sefuncCat) 
+VarAcc <- VarAcc %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+
+  pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:18))
+  
+ggplot(VarAcc, aes(x=Category, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+  geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+  ylab('Accuracy (Brier Score)') +  labs(color = 'Treatment') +
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Accuracy over the Week (II)') 
+
+
+
+#Only treatment
+VarAcc <- Acc %>% group_by(treatment) %>% summarise(y = mean(BrierScore) ) %>% ungroup() 
+VarAcc$se <- apply(VarAcc[,c('treatment')],1,sefuncTreat) 
+VarAcc <- VarAcc %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+ggplot(VarAcc, aes(x=treatment, y=y,color=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + 
+  ylab('Accuracy (Brier Score)') +  xlab('') + labs(color = 'Treatment') + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Accuracy')
+```
+
+# Updates
+```{r Updates}
+#Updates for different combinationations of Treatment and Category of Questions
+lbd <- function(x){return(max(0,mean(x) - 1.96*sd(x)/sqrt( length(x)) ))}
+ubd <- function(x){return(mean(x) + 1.96*sd(x)/sqrt( length(x)))}
+
+
+levels(Updates$Category) <- c("Sports", "Politics &\n Economy", "Entertainment")
+Updates$Date <- factor(Updates$Date, levels = c("Oct 8","Oct 9","Oct 10","Oct 11","Oct 12","Oct 13") )
+
+theme_set(theme_bw() + theme(plot.title = element_text(face = 'bold', size = 12, hjust = 0.5),
+                     panel.grid.major = element_line(color = 'grey70', size = 0.2),
+                     panel.grid.minor = element_blank()
+                     ) )
+one_workers <- Updates %>% group_by(workerId) %>% summarise(val = sum(updates)) %>% filter(val > 0) %>% select(c('workerId'))
+
+NUpdates <- Updates %>% filter(workerId %in% one_workers$workerId)
+countw <- Acc %>% group_by(treatment) %>% summarise(count = length(unique(workerId)))
+
+sefuncTask <- function(x) #standard error for a fixed taskID
+{
+  treatment <- x[1]
+  taskID <- x[2]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  j <- as.numeric(taskID)
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,j,,]) 
+  
+  return(sqrt(v/(25*nt)))
+  
+}
+
+sefuncCat <- function(x) #standard error for a fixed category
+{
+  treatment <- x[1]
+  Cat <- x[2]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  if(Cat == 'Sports')
+    j <- 1:6
+  else if(Cat == 'Politics &\n Economy')
+    j <- 7:12
+  else if(Cat == 'Entertainment')
+    j <- 13:18
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,j,,]) 
+  
+  return(sqrt(v/(30*30*nt)))
+  
+}
+
+sefuncTreat <- function(x) #standard error for a fixed taskID
+{
+  treatment <- x[1]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,,,]) 
+  
+  return(sqrt(v/(90*90*nt)))
+  
+}
+
+
+# Treatment X Category X Date
+VarUpdates <- NUpdates %>% group_by(treatment, Date, taskID, Category) %>% summarise(n = n(), y = mean(updates), var = var(updates)) %>% ungroup()
+VarUpdates <- VarUpdates %>% mutate(n_var = n*var, n_y = n*y)
+VarUpdates <- VarUpdates %>% group_by(treatment, Date, Category) %>% summarise(y = sum(n_y)/sum(n), se = sqrt(sum(n_var)) / sum(n) )
+VarUpdates <- VarUpdates %>% ungroup() %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se)
+
+ggplot(VarUpdates, aes(x=Date, y=y, color=treatment, group=treatment)) + 
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.6) + geom_line(size = 0.4) +
+  facet_grid(Category~treatment) +
+  ggtitle('Daily Updates') + 
+  ylab('Average Updates') + xlab('Day in Oct') + labs(color = 'Treatment') +
+  scale_x_discrete(labels = c("Oct 8" = 8, "Oct 9" = 9, "Oct 10" = 10, "Oct 11" = 11, "Oct 12" = 12, "Oct 13" = 13)) +
+  scale_color_brewer(palette = 'Set1') 
+
+
+
+
+#Treatment X Question
+covA <- array(NA,c(4,18,5,5))
+for(t in 1:4)
+{
+ for(j in 1:18)
+ {
+  for(d1 in 1:5)
+  {
+    for(d2 in 1:5)
+    {
+      Date1 <- paste('Oct', d1 + 7)
+      Date2 <- paste('Oct', d2 + 7)
+      if(t == 1)
+        Treat <- 'Scoring Rule'
+      else if(t == 2)
+        Treat <- 'Peer Prediction'
+      else if(t == 3)
+        Treat <- 'Scoring + PP (Rank)'
+      else if(t == 4)
+        Treat <- 'Scoring + PP'
+      
+      v1 <- NUpdates[NUpdates$Date == Date1 & NUpdates$treatment == Treat & NUpdates$taskID == j, ]$updates
+      v2 <- NUpdates[NUpdates$Date == Date2 & NUpdates$treatment == Treat & NUpdates$taskID == j, ]$updates
+      covA[t,j,d1,d2] <- cov(v1,v2) 
+      
+    }
+  }
+ }
+}
+
+countw <- NUpdates %>% group_by(treatment) %>% summarise(count = length(unique(workerId)))
+
+VarUpdates <- NUpdates %>% group_by(treatment, taskID, Category) %>% summarise(y = mean(updates) ) %>% ungroup() 
+VarUpdates$se <- apply(VarUpdates[,c('treatment','taskID')],1,sefuncTask) 
+VarUpdates <- VarUpdates %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+
+  pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:18))
+  
+ggplot(VarUpdates, aes(x=taskID, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+  geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+  ylab('Average Updates') + xlab('Question Id') + labs(color = 'Treatment') +
+  scale_x_continuous(breaks = qb, labels = qb ) + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Updates over the Week') + facet_wrap(~Category, scales = 'free_x')
+
+
+# Treatment X Category
+VarUpdates <- NUpdates %>% group_by(treatment, Category) %>% summarise(y = mean(updates) ) %>% ungroup() 
+VarUpdates$se <- apply(VarUpdates[,c('treatment','Category')],1,sefuncCat) 
+VarUpdates <- VarUpdates %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+
+  pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:18))
+  
+ggplot(VarUpdates, aes(x=Category, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+  geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+  ylab('Average Updates') +  labs(color = 'Treatment') +
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Updates over the Week (II)') 
+
+
+
+#Only treatment
+VarUpdates <- NUpdates %>% group_by(treatment) %>% summarise(y = mean(updates) ) %>% ungroup() 
+VarUpdates$se <- apply(VarUpdates[,c('treatment')],1,sefuncTreat) 
+VarUpdates <- VarUpdates %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+ggplot(VarUpdates, aes(x=treatment, y=y,color=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + 
+  ylab('Average Updates') +  xlab('') + labs(color = 'Treatment') + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Updates (over workers who made at least one update)')
+
+
+
+
+```
+
+# Total Updates
+```{r Total Updates}
+Total_Updates <- Updates %>% group_by(workerId, taskID, Category, treatment) %>% summarise(total = sum(updates)) %>% ungroup()
+
+lbd <- function(x){return(max(0,mean(x) - 1.96*sd(x)/sqrt( length(x)) ))}
+ubd <- function(x){return(mean(x) + 1.96*sd(x)/sqrt( length(x)))}
+
+
+levels(Total_Updates$Category) <- c("Sports", "Politics &\n Economy", "Entertainment")
+
+# Treatment X Question
+VarTU <- Total_Updates %>% group_by(treatment,taskID,Category) %>% summarise(y = mean(total), se = sd(total)/sqrt(n()), ymin = y - 1.96*se, ymax = y + 1.96*se) %>% ungroup()
+
+ pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:15))
+ggplot(VarTU, aes(x=taskID, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), position = pd, size = 0.4, width = 0.5) +
+  geom_point(size = 0.6, position = pd) + geom_line(size = 0.4, position = pd) +
+  ylab('Average Total Updates') + xlab('Question Id') + labs(color = 'Treatment') +
+  scale_x_continuous(breaks = qb, labels = qb ) + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Total Updates over the Week') + facet_wrap(~Category, scales = 'free_x')
+
+
+# Treatment X Category
+pd <- position_dodge(width = 0.3)
+VarTU <- Total_Updates %>% group_by(treatment, taskID, Category) %>% summarise(n = n(), y = mean(total), var = var(total)) %>% ungroup()
+VarTU <- VarTU %>% mutate(n_var = n*var, n_y = n*y)
+VarTU <- VarTU %>% group_by(treatment, Category) %>% summarise(y = sum(n_y)/sum(n), se = sqrt(sum(n_var)) / sum(n) )
+VarTU <- VarTU %>% ungroup() %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se)
+
+
+ggplot(VarTU, aes(x=Category, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), position = pd, size = 0.4, width = 0.5) +
+  geom_point(size = 0.6, position = pd) + geom_line(size = 0.4, position = pd) +
+  ylab('Average Total Updates') +  labs(color = 'Treatment') + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Total Updates over the Week (II)')
+
+#Only Treatment
+pd <- position_dodge(width = 0.3)
+VarTU <- Total_Updates %>% group_by(treatment, taskID) %>% summarise(n = n(), y = mean(total), var = var(total)) %>% ungroup()
+VarTU <- VarTU %>% mutate(n_var = n*var, n_y = n*y)
+VarTU <- VarTU %>% group_by(treatment) %>% summarise(y = sum(n_y)/sum(n), se = sqrt(sum(n_var)) / sum(n) )
+VarTU <- VarTU %>% ungroup() %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se)
+
+ggplot(VarTU, aes(x=treatment, y=y, color=treatment )) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), position = pd, size = 0.4, width = 0.5) +
+  geom_point(size = 0.6, position = pd) + 
+  ylab('Average Total Updates') +  xlab('Treatment') +  scale_color_brewer(palette = 'Set1') + labs(color = 'Treatment') +
+  ggtitle('Average Total Updates')
+
+
+```
+
+# Returns
+```{r Returns}
+Returns <- Updates %>% filter(updates > 0) %>% group_by(Date, treatment) %>% summarise(returns = n_distinct(workerId)) %>% ungroup()
+
+T1 <- Updates  %>% group_by(Date, treatment) %>% summarise(n = n_distinct(workerId)) %>% ungroup()
+Returns$freq <- Returns$returns / T1$n
+
+ggplot(Returns, aes(x=treatment, y=freq, fill=treatment)) +
+  geom_bar(stat='identity',size = 0.4) +
+  facet_wrap(~Date) +
+  ylab('Fraction of Users Returning') + xlab('Treatment') + labs(fill = 'Treatment') +
+  ggtitle('Returns over the Week') + scale_color_brewer(palette = 'Set1') + coord_flip()
+
+ggplot(Returns, aes(x=treatment, y=freq, color=treatment)) +
+  stat_summary(fun.y = mean, geom = 'bar', width=0.4, fill = 'white', linetype="solid",size = 1.5) +
+  ylab('Average Fraction of Users Returning') + xlab('Treatment')  + labs(color = 'Treatment') +
+  ggtitle('Average Returns') + scale_color_brewer(palette = 'Set1')
+```
+
+# Propensity to Return
+```{r propensity to return}
+lbd <- function(x){return(max(0,mean(x) - 1.96*sd(x)/sqrt( length(x))))}
+ubd <- function(x){return(min(1,mean(x) + 1.96*sd(x)/sqrt( length(x))))}
+pd <- position_dodge(width = 0.3)
+
+Updates %>% mutate(returns = ifelse(updates > 0, 1, 0)) %>% group_by(Date,treatment) %>%
+  ggplot(aes(Date,returns,color=treatment,group=treatment)) + 
+  stat_summary(fun.y = mean, geom = 'point',position=pd,size=0.5) +
+  stat_summary(fun.y = mean, geom = 'line',position=pd,size=0.4) + 
+  stat_summary(fun.y = mean, geom = 'errorbar', fun.ymin = lbd, fun.ymax = ubd,position=pd,width=0.5) +
+  ylab('Propensity to Return') + xlab('Treatment')  + labs(color = 'Treatment') +
+  ggtitle('Daily Propensity to Return') + scale_color_brewer(palette = 'Set1')
+
+#average propensity to return
+Returns <- Updates %>% mutate(returns = ifelse(updates > 0, 1, 0))
+countw <- Acc %>% group_by(treatment) %>% summarise(count = length(unique(workerId)))
+covA <- array(NA,c(4,5,5))
+for(t in 1:4)
+{
+  for(d1 in 1:5)
+  {
+    for(d2 in 1:5)
+    {
+      Date1 <- paste('Oct', d1 - 1 + 8)
+      Date2 <- paste('Oct', d2 - 1 + 8)
+      if(t == 1)
+        Treat <- 'Scoring Rule'
+      else if(t == 2)
+        Treat <- 'Peer Prediction'
+      else if(t == 3)
+        Treat <- 'Scoring + PP (Rank)'
+      else if(t == 4)
+        Treat <- 'Scoring + PP'
+      
+      v1 <- Returns[Returns$Date == Date1 & Returns$treatment == Treat, ]$returns
+      v2 <- Returns[Returns$Date == Date2 & Returns$treatment == Treat, ]$returns
+      covA[t,d1,d2] <- cov(v1,v2) 
+    }
+  }
+ }
+
+
+sefuncTreat1 <- function(x) #standard error for a fixed taskID
+{
+  treatment <- x[1]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,,]) 
+  
+  return(sqrt(v/(25*18*nt)))
+  
+}
+
+#Only treatment
+VarRet <- Returns %>% group_by(treatment) %>% summarise(y = mean(returns) ) %>% ungroup() 
+VarRet$se <- apply(VarRet[,c('treatment')],1,sefuncTreat1) 
+VarRet <- VarRet %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+ggplot(VarRet, aes(x=treatment, y=y,color=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + 
+  ylab('Propensity to Return') +  xlab('') + labs(color = 'Treatment') + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Propensity to Return')
+```
+
+# Changes
+```{r Changes}
+lbd <- function(x){return(max(0,mean(x) - 1.96*sd(x)/sqrt( length(x)) ))}
+ubd <- function(x){return(mean(x) + 1.96*sd(x)/sqrt( length(x)))}
+
+
+levels(Change$Category) <- c("Sports", "Politics &\n Economy", "Entertainment")
+Change$Date <- factor(Change$Date, levels = c("Oct 8","Oct 9","Oct 10","Oct 11","Oct 12","Oct 13") )
+
+theme_set(theme_bw() + theme(plot.title = element_text(face = 'bold', size = 12, hjust = 0.5),
+                     panel.grid.major = element_line(color = 'grey70', size = 0.2),
+                     panel.grid.minor = element_blank()
+                     ) )
+
+
+
+# Treatment X Category X Date
+VarChange <- Change %>% group_by(treatment, Date, taskID, Category) %>% summarise(n = n(), y = mean(avg_change), var = var(avg_change)) %>% ungroup()
+VarChange <- VarChange %>% mutate(n_var = n*var, n_y = n*y)
+VarChange <- VarChange %>% group_by(treatment, Date, Category) %>% summarise(y = sum(n_y)/sum(n), se = sqrt(sum(n_var)) / sum(n) )
+VarChange <- VarChange %>% ungroup() %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se)
+
+ggplot(VarChange, aes(x=Date, y=y, color=treatment, group=treatment)) + 
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.6) + geom_line(size = 0.4) +
+  facet_grid(Category~treatment) +
+  ggtitle('Daily Change in Forecasts') + 
+  ylab('Change in Forecasts') + xlab('Day in Oct') + labs(color = 'Treatment') +
+  scale_x_discrete(labels = c("Oct 8" = 8, "Oct 9" = 9, "Oct 10" = 10, "Oct 11" = 11, "Oct 12" = 12, "Oct 13" = 13)) +
+  scale_color_brewer(palette = 'Set1') 
+
+
+  
+  #Treatment X Question
+covA <- array(NA,c(4,18,5,5))
+for(t in 1:4)
+{
+ for(j in 1:18)
+ {
+  for(d1 in 1:5)
+  {
+    for(d2 in 1:5)
+    {
+      Date1 <- paste('Oct', d1 + 7)
+      Date2 <- paste('Oct', d2 + 7)
+      if(t == 1)
+        Treat <- 'Scoring Rule'
+      else if(t == 2)
+        Treat <- 'Peer Prediction'
+      else if(t == 3)
+        Treat <- 'Scoring + PP (Rank)'
+      else if(t == 4)
+        Treat <- 'Scoring + PP'
+      
+      v1 <- Change[Change$Date == Date1 & Change$treatment == Treat & Change$taskID == j, ]$avg_change
+      v2 <- Change[Change$Date == Date2 & Change$treatment == Treat & Change$taskID == j, ]$avg_change
+      covA[t,j,d1,d2] <- cov(v1,v2) 
+      
+    }
+  }
+ }
+}
+
+countw <- Updates %>% group_by(treatment) %>% summarise(count = length(unique(workerId)))
+
+VarChange <- Change %>% group_by(treatment, taskID, Category) %>% summarise(y = mean(avg_change) ) %>% ungroup() 
+VarChange$se <- apply(VarChange[,c('treatment','taskID')],1,sefuncTask) 
+VarChange <- VarChange %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+
+  pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:18))
+  
+ggplot(VarChange, aes(x=taskID, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+  geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+  ylab('Average Change in Forecasts') + xlab('Question Id') + labs(color = 'Treatment') +
+  scale_x_continuous(breaks = qb, labels = qb ) + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Change in Forecasts over the Week') + facet_wrap(~Category, scales = 'free_x')
+
+
+# Treatment X Category
+VarChange <- Change %>% group_by(treatment, Category) %>% summarise(y = mean(avg_change) ) %>% ungroup() 
+VarChange$se <- apply(VarChange[,c('treatment','Category')],1,sefuncCat) 
+VarChange <- VarChange %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+
+  pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:18))
+  
+ggplot(VarChange, aes(x=Category, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+  geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+  ylab('Average Change in Forecasts') +  labs(color = 'Treatment') +
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Change in Forecasts over the Week (II)') 
+
+
+
+#Only treatment
+VarChange <- Change %>% group_by(treatment) %>% summarise(y = mean(avg_change) ) %>% ungroup() 
+VarChange$se <- apply(VarChange[,c('treatment')],1,sefuncTreat) 
+VarChange <- VarChange %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+ggplot(VarChange, aes(x=treatment, y=y,color=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + 
+  ylab('Average Change in Forecasts') +  xlab('') + labs(color = 'Treatment') + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Change in Forecasts')
+
+
+
+
+
+
+
+
+
+```
+
+
+# Peer Prediction Score
+```{r Peer Prediction Score}
+#Accuracy for different combinationations of Treatment and Category of Questions
+lbd <- function(x){return(max(0,mean(x) - 1.96*sd(x)/sqrt( length(x))))}
+ubd <- function(x){return(min(1,mean(x) + 1.96*sd(x)/sqrt( length(x))))}
+
+
+levels(PPScore$Category) <- c("Sports", "Politics &\n Economy", "Entertainment")
+PPScore$Date <- factor(PPScore$Date, levels = c("Oct 8","Oct 9","Oct 10","Oct 11","Oct 12","Oct 13") )
+theme_set(theme_bw() + theme(plot.title = element_text(face = 'bold', size = 12, hjust = 0.5),
+                     panel.grid.major = element_line(color = 'grey70', size = 0.2),
+                     panel.grid.minor = element_blank()
+                     ) )
+
+# Treatment X Category X Date
+VarPPScore <- PPScore %>% group_by(treatment, Date, taskID, Category) %>% summarise(n = n(), y = mean(PPPayment), var = var(PPPayment)) %>% ungroup()
+VarPPScore <- VarPPScore %>% mutate(n_var = n*var, n_y = n*y)
+VarPPScore <- VarPPScore %>% group_by(treatment, Date, Category) %>% summarise(y = sum(n_y)/sum(n), se = sqrt(sum(n_var)) / sum(n) )
+VarPPScore <- VarPPScore %>% ungroup() %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se)
+
+ggplot(VarPPScore, aes(x=Date, y=y, color=treatment, group=treatment)) + 
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.6) + geom_line(size = 0.4) +
+  facet_grid(Category~treatment) +
+  ggtitle('Daily Peer Prediction Score') + 
+  ylab('Peer Prediction Score') + xlab('Day in Oct') + labs(color = 'Treatment') +
+  scale_x_discrete(labels = c("Oct 8" = 8, "Oct 9" = 9, "Oct 10" = 10, "Oct 11" = 11, "Oct 12" = 12, "Oct 13" = 13)) +
+  scale_color_brewer(palette = 'Set1') 
+
+
+  
+
+#Treatment X Question
+covA <- array(NA,c(4,18,6,6))
+for(t in 1:4)
+{
+ for(j in 1:18)
+ {
+  for(d1 in 1:6)
+  {
+    for(d2 in 1:6)
+    {
+      Date1 <- paste('Oct', d1 - 1 + 8)
+      Date2 <- paste('Oct', d2 - 1 + 8)
+      if(t == 1)
+        Treat <- 'Scoring Rule'
+      else if(t == 2)
+        Treat <- 'Peer Prediction'
+      else if(t == 3)
+        Treat <- 'Scoring + PP (Rank)'
+      else if(t == 4)
+        Treat <- 'Scoring + PP'
+      
+      v1 <- PPScore[PPScore$Date == Date1 & PPScore$treatment == Treat & PPScore$taskID == j, ]$PPPayment
+      v2 <- PPScore[PPScore$Date == Date2 & PPScore$treatment == Treat & PPScore$taskID == j, ]$PPPayment
+      covA[t,j,d1,d2] <- cov(v1,v2) 
+      
+    }
+  }
+ }
+}
+
+countw <- Acc %>% group_by(treatment) %>% summarise(count = length(unique(workerId)))
+sefuncTask <- function(x) #standard error for a fixed taskID
+{
+  treatment <- x[1]
+  taskID <- x[2]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  j <- as.numeric(taskID)
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,j,,]) 
+  
+  return(sqrt(v/(36*nt)))
+  
+}
+
+sefuncCat <- function(x) #standard error for a fixed category
+{
+  treatment <- x[1]
+  Cat <- x[2]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  if(Cat == 'Sports')
+    j <- 1:6
+  else if(Cat == 'Politics &\n Economy')
+    j <- 7:12
+  else if(Cat == 'Entertainment')
+    j <- 13:18
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,j,,]) 
+  
+  return(sqrt(v/(36*36*nt)))
+  
+}
+
+sefuncTreat <- function(x) #standard error for a fixed treatment
+{
+  treatment <- x[1]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,,,]) 
+  
+  return(sqrt(v/(108*108*nt)))
+  
+}
+
+VarPPScore <- PPScore %>% group_by(treatment, taskID, Category) %>% summarise(y = mean(PPPayment) ) %>% ungroup() 
+VarPPScore$se <- apply(VarPPScore[,c('treatment','taskID')],1,sefuncTask) 
+VarPPScore <- VarPPScore %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+
+  pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:18))
+  
+ggplot(VarPPScore, aes(x=taskID, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+  geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+  ylab('Peer Prediction Score') + xlab('Question Id') + labs(color = 'Treatment') +
+  scale_x_continuous(breaks = qb, labels = qb ) + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Peer Prediction Score over the Week') + facet_wrap(~Category, scales = 'free_x')
+
+
+# Treatment X Category
+VarPPScore <- PPScore %>% group_by(treatment, Category) %>% summarise(y = mean(PPPayment) ) %>% ungroup() 
+VarPPScore$se <- apply(VarPPScore[,c('treatment','Category')],1,sefuncCat) 
+VarPPScore <- VarPPScore %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+
+  pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:18))
+  
+ggplot(VarPPScore, aes(x=Category, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+  geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+  ylab('Peer Prediction Score') +  labs(color = 'Treatment') +
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Peer Prediction Score over the Week (II)') 
+
+
+
+#Only treatment
+VarPPScore <- PPScore %>% group_by(treatment) %>% summarise(y = mean(PPPayment) ) %>% ungroup() 
+VarPPScore$se <- apply(VarPPScore[,c('treatment')],1,sefuncTreat) 
+VarPPScore <- VarPPScore %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+ggplot(VarPPScore, aes(x=treatment, y=y,color=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + 
+  ylab('Peer Prediction Score') +  xlab('') + labs(color = 'Treatment') + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Peer Prediction Score')
+
+
+
+
+
+```
+
+# Brier Score vs PP Score
+```{r Brier Score vs PP Score}
+lbd <- function(x){return(max(0,mean(x) - 1.96*sd(x)/sqrt( length(x))))}
+ubd <- function(x){return(min(1,mean(x) + 1.96*sd(x)/sqrt( length(x))))}
+
+
+levels(PPScore$Category) <- c("Sports", "Politics &\n Economy", "Entertainment")
+PPScore$Date <- factor(PPScore$Date, levels = c("Oct 8","Oct 9","Oct 10","Oct 11","Oct 12","Oct 13") )
+
+theme_set(theme_bw() + theme(plot.title = element_text(face = 'bold', size = 12, hjust = 0.5),
+                     panel.grid.major = element_line(color = 'grey70', size = 0.2),
+                     panel.grid.minor = element_blank()
+                     ) )
+NPPScore <- PPScore %>% mutate(PPPayment = -2*PPPayment + 2, BrierScore = -2*BrierScore + 2)
+CatPPScore <- PPScore %>% group_by(workerId, Category, treatment) %>% summarise(avg_Brier = mean(BrierScore), avg_PP = mean(PPPayment)) %>% ungroup()
+
+ggplot(CatPPScore, aes(x=avg_PP, y=avg_Brier, color=treatment)) + 
+  geom_point(size = 0.5) +
+  facet_grid(Category~treatment) + geom_smooth(method='lm', formula = y~x, se = FALSE) +
+  ggtitle('Accuracy vs Peer Prediction Score (Averaged over the week)') + 
+  xlab('Peer Prediction Score') + ylab('Brier Score') + labs(color = 'Treatment') +
+  scale_color_brewer(palette = 'Set1') 
+
+CatDatePPScore <- PPScore %>% group_by(workerId, Category, treatment, Date) %>% summarise(avg_Brier = mean(BrierScore), avg_PP = mean(PPPayment)) %>% ungroup()
+
+ggplot(CatDatePPScore, aes(x=avg_PP, y=avg_Brier, color=treatment)) + 
+  geom_point(size = 0.5) + geom_smooth(method='lm', formula = y~x, se = FALSE) +
+  facet_grid(Date~treatment) +
+  ggtitle('Accuracy vs Peer Prediction Score (Averaged over the Questions)') + 
+  xlab('Peer Prediction Score') + ylab('Brier Score') + labs(color = 'Treatment') +
+  scale_color_brewer(palette = 'Set1') 
+
+#TreatPPScore <- PPScore %>% group_by(workerId, treatment) %>% summarise(avg_Brier = mean(BrierScore), avg_PP = mean(PPPayment)) %>% ungroup()
+TreatPPScore <- PPScore %>% group_by(workerId, treatment, Date) %>% summarise(avg_Brier = mean(BrierScore), avg_PP = mean(PPPayment)) %>% ungroup()
+ggplot(TreatPPScore, aes(x=avg_PP, y=avg_Brier, color=treatment, group=treatment)) + 
+   geom_point(size = 0.3) + geom_smooth(method='lm', formula = y~x, se = FALSE) +
+ facet_grid(~treatment) +
+  ggtitle('Accuracy vs Peer Prediction Score (Averaged over the week & Questions)') + 
+  xlab('Peer Prediction Score') + ylab('Brier Score') + labs(color = 'Treatment') +
+  scale_color_brewer(palette = 'Set1') #+
+  #labs(caption = 'Correlation Coefficients : 0.2527 (Scoring Rule), 0.6802 (Peer Prediction),\n 0.3138 (Scoring + PP), 0.1513 (Scoring + PP (Rank))')
+```
+# Correlation Coefficient
+```{r correlation coeeficient}
+
+```
+
+# Accuracy and PP Score across Individual Questions
+```{r Accuracy across Individual Questions}
+Acc <- Acc.oct
+VarAcc <- Acc %>% group_by(treatment, Date, taskID) %>% summarise(n = n(), y = mean(BrierScore), var = var(BrierScore)) %>% ungroup()
+VarAcc <- VarAcc %>% mutate(n_var = n*var, n_y = n*y)
+VarAcc <- VarAcc %>% group_by(treatment, Date, taskID) %>% summarise(y = sum(n_y)/sum(n), se = sqrt(sum(n_var)) / sum(n) )
+VarAcc <- VarAcc %>% ungroup() %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se)
+
+#h <- vector("list",15)
+#for(j in 1:15)
+#{
+#tempVar <- VarAcc %>% filter(taskID == j)
+ggplot(VarAcc, aes(x=Date, y=y, color=treatment, group=treatment)) + 
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position=pd) + 
+  geom_point(size = 0.5) + geom_line(size  = 0.4) +
+  facet_wrap(~taskID,nrow=1) +
+  #facet_wrap(~taskID,scales = 'free',nrow=3) +
+  ggtitle('Daily Accuracy') + 
+  ylab('Accuracy (Brier Score)') + xlab('Day in Oct') + labs(color = 'Treatment') +
+  scale_x_discrete(labels = c("Oct 8" = 8, "Oct 9" = 9, "Oct 10" = 10, "Oct 11" = 11, "Oct 12" = 12, "Oct 13" = 13)) +
+  scale_color_brewer(palette = 'Set1') 
+
+# PP Score
+VarPP <- PPScore %>% group_by(treatment, Date, taskID) %>% summarise(n = n(), y = mean(PPPayment), var = var(PPPayment)) %>% ungroup()
+VarPP <- VarPP %>% mutate(n_var = n*var, n_y = n*y)
+VarPP <- VarPP %>% group_by(treatment, Date, taskID) %>% summarise(y = sum(n_y)/sum(n), se = sqrt(sum(n_var)) / sum(n) )
+VarPP <- VarPP %>% ungroup() %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se)
+
+#h <- vector("list",15)
+#for(j in 1:15)
+#{
+#tempVar <- VarAcc %>% filter(taskID == j)
+ggplot(VarPP, aes(x=Date, y=y, color=treatment, group=treatment)) + 
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + geom_line(size  = 0.4) +
+  facet_wrap(~taskID,scales = 'free',nrow=3) +
+  ggtitle('Daily PP Score') + 
+  ylab('PP Score') + xlab('Day in July') + labs(color = 'Treatment') +
+  scale_x_discrete(labels = c("Oct 8" = 8, "Oct 9" = 9, "Oct 10" = 10, "Oct 11" = 11, "Oct 12" = 12, "Oct 13" = 13)) +
+  scale_color_brewer(palette = 'Set1') 
+```
+
+# Do not Carry forward previous predictions
+```{r do not carry forward previous predictions}
+minusDF <- function(A,B) # A - B
+{
+  C <- rbind(B,A)
+  x <- duplicated(C)
+  x <- which(x == TRUE)
+  y <- x - nrow(B)
+  return(as_tibble(A[-y,]))
+}
+one8 <- one.answers.oct8
+one9 <- minusDF(one.answers.oct9, one.answers.oct8)
+one10 <- minusDF(one.answers.oct10, one.answers.oct9)
+one11 <- minusDF(one.answers.oct11, one.answers.oct10)
+one12 <- minusDF(one.answers.oct12, one.answers.oct11)
+one13 <- minusDF(one.answers.oct13, one.answers.oct12)
+
+dAcc8 <- mutate(one8, Accuracy = BrierScore, Date = 'Oct 8')
+dAcc9 <- mutate(one9, Accuracy = BrierScore, Date = 'Oct 9')
+dAcc10 <- mutate(one10, Accuracy = BrierScore, Date = 'Oct 10')
+dAcc11 <- mutate(one11, Accuracy = BrierScore, Date = 'Oct 11')
+dAcc12 <- mutate(one12, Accuracy = BrierScore, Date = 'Oct 12')
+dAcc13 <- mutate(one13, Accuracy = BrierScore, Date = 'Oct 13')
+
+dAcc <- rbind(dAcc8, dAcc9)
+dAcc <- rbind(dAcc, dAcc10)
+dAcc <- rbind(dAcc, dAcc11)
+dAcc <- rbind(dAcc, dAcc12)
+dAcc <- rbind(dAcc, dAcc13)
+
+
+dAcc$Category <- apply(dAcc[,c('taskID')],1,CatQuestions)
+dAcc$Category <- factor(dAcc$Category, levels = c("Sports","Politics","Entertainment"))
+dAcc$treatment <- apply(dAcc[,c('treatment')],1,CatTreatment)
+dAcc$treatment <- factor(dAcc$treatment, levels = c("Scoring Rule", "Peer Prediction", "Scoring + PP (Rank)", "Scoring + PP"))
+
+levels(dAcc$Category) <- c("Sports", "Politics &\n Economy", "Entertainment")
+
+#Treatment X Question X Date
+
+VardAcc <- dAcc %>% group_by(treatment, Date, taskID) %>% summarise(n = n(), y = mean(BrierScore), var = var(BrierScore)) %>% ungroup()
+VardAcc <- VardAcc %>% mutate(n_var = n*var, n_y = n*y)
+VardAcc <- VardAcc %>% group_by(treatment, Date, taskID) %>% summarise(y = sum(n_y)/sum(n), se = sqrt(sum(n_var)) / sum(n) )
+VardAcc <- VardAcc %>% ungroup() %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se)
+
+ggplot(VardAcc, aes(x=Date, y=y, color=treatment, group=treatment)) + 
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + geom_line(size  = 0.4) +
+  facet_wrap(~taskID,scales = 'free',nrow=3) +
+  ggtitle('Daily Accuracy (without carrying forward past forecasts)') + 
+  ylab('Accuracy (Brier Score)') + xlab('Day in Oct') + labs(color = 'Treatment') +
+  scale_x_discrete(labels = c("Oct 8" = 8, "Oct 9" = 9, "Oct 10" = 10, "Oct 11" = 11, "Oct 12" = 12, "Oct 13" = 13)) +
+  scale_color_brewer(palette = 'Set1') 
+
+
+# Treatment X Category X Date
+VardAcc <- dAcc %>% group_by(treatment, Date, taskID, Category) %>% summarise(n = n(), y = mean(BrierScore), var = var(BrierScore)) %>% ungroup()
+VardAcc <- VardAcc %>% mutate(n_var = n*var, n_y = n*y)
+VardAcc <- VardAcc %>% group_by(treatment, Date, Category) %>% summarise(y = sum(n_y)/sum(n), se = sqrt(sum(n_var)) / sum(n) )
+VardAcc <- VardAcc %>% ungroup() %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se)
+
+ggplot(VardAcc, aes(x=Date, y=y, color=treatment, group=treatment)) + 
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + geom_line(size  = 0.4) +
+  facet_grid(Category~treatment) +
+  ggtitle('Daily Accuracy (without carrying forward past forecasts)') + 
+  ylab('Accuracy (Brier Score)') + xlab('Day in Oct') + labs(color = 'Treatment') +
+  scale_x_discrete(labels = c("Oct 8" = 8, "Oct 9" = 9, "Oct 10" = 10, "Oct 11" = 11, "Oct 12" = 12, "Oct 13" = 13)) +
+  scale_color_brewer(palette = 'Set1') 
+
+
+
+
+#Treatment X Question
+
+meanQ <- function(data, indices)
+{
+  d <- data[indices]
+  return(mean(d))
+}
+bootQ <- function(Acc)
+{
+  result <- boot(data = Acc, statistic = meanQ, R = 10000)
+  ret <- boot.ci(result, type = "norm")
+  ymin <- ret$normal[2]
+  ymax <- ret$normal[3]
+  y <- (ymin + ymax) / 2
+  return( paste(y,ymin,ymax) )
+}
+
+VardAcc <- dAcc %>% group_by(treatment, taskID, Category) %>% summarise( res=bootQ(Accuracy)) %>% mutate(y = as.numeric(word(res,1) ), ymin = as.numeric(word(res,2) ), ymax = as.numeric(word(res,3) ) ) %>% ungroup() %>% select(-c(res))
+
+  pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:18))
+  
+ggplot(VardAcc, aes(x=taskID, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+  geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+  ylab('Accuracy (Brier Score)') + xlab('Question Id') + labs(color = 'Treatment') +
+  scale_x_continuous(breaks = qb, labels = qb ) + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Accuracy over the Week (without carrying forward past forecasts)') + facet_wrap(~Category, scales = 'free_x')
+
+
+# Treatment X Category
+VardAcc <- dAcc %>% group_by(treatment, Category) %>% summarise( res=bootQ(Accuracy)) %>% mutate(y = as.numeric(word(res,1) ), ymin = as.numeric(word(res,2) ), ymax = as.numeric(word(res,3) ) ) %>% ungroup() %>% select(-c(res))
+
+
+  pd <- position_dodge(width = 0.3)
+  qb <-c(seq(1:18))
+  
+ggplot(VardAcc, aes(x=Category, y=y, color=treatment, group=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+  geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+  ylab('Accuracy (Brier Score)') +  labs(color = 'Treatment') +
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Accuracy over the Week (II) (without carrying forward past forecasts)') 
+
+
+
+#Only treatment
+VardAcc <- dAcc %>% group_by(treatment) %>% summarise( res=bootQ(Accuracy)) %>% mutate(y = as.numeric(word(res,1) ), ymin = as.numeric(word(res,2) ), ymax = as.numeric(word(res,3) ) ) %>% ungroup() %>% select(-c(res))
+
+ggplot(VardAcc, aes(x=treatment, y=y,color=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + 
+  ylab('Accuracy (Brier Score)') +  xlab('') + labs(color = 'Treatment') + scale_color_brewer(palette = 'Set1') + 
+  ggtitle('Average Accuracy (without carrying forward past forecasts)')
+```
+
+# PP Score vs Brier Score (with partitions)
+```{r PP Score vs Brier Score (with partitions)}
+h <- vector("list", length = 4)
+for(p in 1:4)
+{
+  lth <- 0.5 + (p-1)*0.1
+  hth <- 0.5 + p*0.1
+  
+  vworkers <- Acc %>% group_by(workerId) %>% summarise(avgBrier = mean(BrierScore)) %>% filter(avgBrier >= lth & avgBrier <= hth)
+  vworkers <- vworkers$workerId
+  
+  #Only treatment
+  idxs <- which(PPScore$workerId %in% vworkers)
+  dPPScore <- PPScore[idxs,]
+  countw <- dPPScore %>% group_by(treatment) %>% summarise(count = length(unique(workerId)))
+  
+  covA <- array(NA,c(4,18,6,6))
+for(t in 1:4)
+{
+ for(j in 1:18)
+ {
+  for(d1 in 1:6)
+  {
+    for(d2 in 1:6)
+    {
+      Date1 <- paste('Oct', d1 - 1 + 8)
+      Date2 <- paste('Oct', d2 - 1 + 8)
+      if(t == 1)
+        Treat <- 'Scoring Rule'
+      else if(t == 2)
+        Treat <- 'Peer Prediction'
+      else if(t == 3)
+        Treat <- 'Scoring + PP (Rank)'
+      else if(t == 4)
+        Treat <- 'Scoring + PP'
+      
+      v1 <- dPPScore[dPPScore$Date == Date1 & dPPScore$treatment == Treat & dPPScore$taskID == j, ]$PPPayment
+      v2 <- dPPScore[dPPScore$Date == Date2 & dPPScore$treatment == Treat & dPPScore$taskID == j, ]$PPPayment
+      covA[t,j,d1,d2] <- cov(v1,v2) 
+      
+    }
+  }
+ }
+}
+
+  sefuncTreat <- function(x) #standard error for a fixed taskID
+{
+  treatment <- x[1]
+ 
+  if(treatment == 'Scoring Rule')
+    t <- 1
+  else if(treatment == 'Peer Prediction')
+    t <- 2
+  else if(treatment == 'Scoring + PP (Rank)')
+    t <- 3
+  else if(treatment == 'Scoring + PP')
+    t <- 4
+  
+  
+  
+  nt <- countw[countw$treatment == treatment,]$count
+  v <- sum(covA[t,,,]) 
+  
+  return(sqrt(v/(108*108*nt)))
+  
+ }
+  
+VarPPScore <- dPPScore %>% group_by(treatment) %>% summarise(y = mean(PPPayment) ) %>% ungroup() 
+VarPPScore$se <- apply(VarPPScore[,c('treatment')],1,sefuncTreat) 
+VarPPScore <- VarPPScore %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+
+h[[p]] <- ggplot(VarPPScore, aes(x=treatment, y=y,color=treatment)) +
+  geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+  geom_point(size = 0.5) + 
+  ylab('Peer Prediction Score') +  xlab('') + labs(color = 'Treatment') + scale_color_brewer(palette = 'Set1') + 
+  ggtitle(paste(lth,'<= Accuracy <=',hth))
+
+
+}
+grid.arrange(h[[1]],h[[2]],h[[3]],h[[4]],nrow=2)
+```
+
+# Filter out first three days
+```{r Filter out first three days}
+# idx <- which(Acc$Date %in% c('July 20', 'July 21', 'July 22'))
+# nAcc <- Acc[-idx,]
+# 
+# #Treatment X Question
+# covA <- array(NA,c(4,15,4,4))
+# for(t in 1:4)
+# {
+#  for(j in 1:15)
+#  {
+#   for(d1 in 1:4)
+#   {
+#     for(d2 in 1:4)
+#     {
+#       Date1 <- paste('July', d1 - 1 + 23)
+#       Date2 <- paste('July', d2 - 1 + 23)
+#       if(t == 1)
+#         Treat <- 'Scoring Rule'
+#       else if(t == 2)
+#         Treat <- 'Peer Prediction'
+#       else if(t == 3)
+#         Treat <- 'Scoring + PP (Rank)'
+#       else if(t == 4)
+#         Treat <- 'Scoring + PP'
+#       
+#       v1 <- nAcc[nAcc$Date == Date1 & nAcc$treatment == Treat & nAcc$taskID == j, ]$BrierScore
+#       v2 <- nAcc[nAcc$Date == Date2 & nAcc$treatment == Treat & nAcc$taskID == j, ]$BrierScore
+#       covA[t,j,d1,d2] <- cov(v1,v2) 
+#       
+#     }
+#   }
+#  }
+# }
+# 
+# countw <- nAcc %>% group_by(treatment) %>% summarise(count = length(unique(workerId)))
+# sefuncTask <- function(x) #standard error for a fixed taskID
+# {
+#   treatment <- x[1]
+#   taskID <- x[2]
+#  
+#   if(treatment == 'Scoring Rule')
+#     t <- 1
+#   else if(treatment == 'Peer Prediction')
+#     t <- 2
+#   else if(treatment == 'Scoring + PP (Rank)')
+#     t <- 3
+#   else if(treatment == 'Scoring + PP')
+#     t <- 4
+#   
+#   j <- as.numeric(taskID)
+#   
+#   
+#   nt <- countw[countw$treatment == treatment,]$count
+#   v <- sum(covA[t,j,,]) 
+#   
+#   return(sqrt(v/(16*nt)))
+#   
+# }
+# 
+# sefuncCat <- function(x) #standard error for a fixed taskID
+# {
+#   treatment <- x[1]
+#   Cat <- x[2]
+#  
+#   if(treatment == 'Scoring Rule')
+#     t <- 1
+#   else if(treatment == 'Peer Prediction')
+#     t <- 2
+#   else if(treatment == 'Scoring + PP (Rank)')
+#     t <- 3
+#   else if(treatment == 'Scoring + PP')
+#     t <- 4
+#   
+#   if(Cat == 'Sports')
+#     j <- 1:5
+#   else if(Cat == 'Politics &\n Economy')
+#     j <- 6:10
+#   else if(Cat == 'Entertainment')
+#     j <- 11:15
+#   
+#   
+#   nt <- countw[countw$treatment == treatment,]$count
+#   v <- sum(covA[t,j,,]) 
+#   
+#   return(sqrt(v/(20*20*nt)))
+#   
+# }
+# 
+# sefuncTreat <- function(x) #standard error for a fixed taskID
+# {
+#   treatment <- x[1]
+#  
+#   if(treatment == 'Scoring Rule')
+#     t <- 1
+#   else if(treatment == 'Peer Prediction')
+#     t <- 2
+#   else if(treatment == 'Scoring + PP (Rank)')
+#     t <- 3
+#   else if(treatment == 'Scoring + PP')
+#     t <- 4
+#   
+#   
+#   
+#   nt <- countw[countw$treatment == treatment,]$count
+#   v <- sum(covA[t,,,]) 
+#   
+#   return(sqrt(v/(60*60*nt)))
+#   
+# }
+# VarAcc <- nAcc %>% group_by(treatment, taskID, Category) %>% summarise(y = mean(BrierScore) ) %>% ungroup() 
+# VarAcc$se <- apply(VarAcc[,c('treatment','taskID')],1,sefuncTask) 
+# VarAcc <- VarAcc %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+# 
+# 
+#   pd <- position_dodge(width = 0.3)
+#   qb <-c(seq(1:15))
+#   
+# ggplot(VarAcc, aes(x=taskID, y=y, color=treatment, group=treatment)) +
+#   geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+#   geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+#   ylab('Accuracy (Brier Score)') + xlab('Question Id') + labs(color = 'Treatment') +
+#   scale_x_continuous(breaks = qb, labels = qb ) + scale_color_brewer(palette = 'Set1') + 
+#   ggtitle('Average Accuracy over the Week (July 23-26)') + facet_wrap(~Category, scales = 'free_x')
+# 
+# 
+# # Treatment X Category
+# VarAcc <- nAcc %>% group_by(treatment, Category) %>% summarise(y = mean(BrierScore) ) %>% ungroup() 
+# VarAcc$se <- apply(VarAcc[,c('treatment','Category')],1,sefuncCat) 
+# VarAcc <- VarAcc %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+# 
+# 
+#   pd <- position_dodge(width = 0.3)
+#   qb <-c(seq(1:15))
+#   
+# ggplot(VarAcc, aes(x=Category, y=y, color=treatment, group=treatment)) +
+#   geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5, position = pd) + 
+#   geom_point(size = 0.5, position = pd) + geom_line(size  = 0.4, position = pd) +
+#   ylab('Accuracy (Brier Score)') +  labs(color = 'Treatment') +
+#   scale_color_brewer(palette = 'Set1') + 
+#   ggtitle('Average Accuracy over the Week (II) (July 23-26)') 
+# 
+# 
+# 
+# #Only treatment
+# VarAcc <- nAcc %>% group_by(treatment) %>% summarise(y = mean(BrierScore) ) %>% ungroup() 
+# VarAcc$se <- apply(VarAcc[,c('treatment')],1,sefuncTreat) 
+# VarAcc <- VarAcc %>% mutate(ymin = y - 1.96*se, ymax = y + 1.96*se) 
+# 
+# ggplot(VarAcc, aes(x=treatment, y=y,color=treatment)) +
+#   geom_errorbar(aes(ymin = ymin, ymax = ymax), size = 0.4, width = 0.5) + 
+#   geom_point(size = 0.5) + 
+#   ylab('Accuracy (Brier Score)') +  xlab('') + labs(color = 'Treatment') + scale_color_brewer(palette = 'Set1') + 
+#   ggtitle('Average Accuracy (July 23-26)')
+```
