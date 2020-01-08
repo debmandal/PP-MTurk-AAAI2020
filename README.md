@@ -17,3 +17,16 @@ the treatments.
 </p>
 
 The figure above shows the details of the experiment. We asked the workers to provide forecasts on 18 different questions. There were three different categories of questions: (a) Sports, (b) Politics and Economy and (c) En-tertainment, with six questions from each category. The supplementary material includes the questions along with their outcomes.
+
+## Findings
+
+We find that peer-prediction incentives, whether in monetary or in non-monetary form such as rank, significantly improve engagement with the forecasting platform compared to basic, scoring rule based incentives. Furthermore, we used various aggregators to evaluate the accuracy of aggregated forecasts under different treatments, and found that two treatments, the basic scoring rule and the hybrid scheme which, in addition to the scoring rule based payments, sends daily non-monetary feedback to the users, perform best for both dynamic and easy questions, and signifcantly outperform the other treatments for some aggregators. The reader is encouraged to check out the main paper for further details of the analysis. 
+
+## Description of the Dataset
+
+* Folder data/ contains
+* Folder src/ contains
+
+## How to Cite Our Work
+
+
