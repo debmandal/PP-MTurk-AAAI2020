@@ -12,6 +12,8 @@ the treatments.
 3. **Scoring Rule + Peer Prediction (Rank)** (SR+PPRank)
 4. **Scoring Rule + Peer Prediction** (SR+PP)
 
-![Experimental Workflow](images/workflow.png)
+<p align="center">
+<img src="./images/workflow.png" width=600>
+</p>
 
 The figure above shows the details of the experiment. We asked the workers to provide forecasts on 18 different questions. There were three different categories of questions: (a) Sports, (b) Politics and Economy and (c) En-tertainment, with six questions from each category. The supplementary material includes the questions along with their outcomes.
